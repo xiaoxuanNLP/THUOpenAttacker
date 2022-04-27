@@ -10,21 +10,22 @@ from ...exceptions import WordNotInDictionaryException
 from ...tags import Tag
 from ...attack_assist.filter_words import get_default_filter_words
 
+
 class TextFoolerAttacker(ClassificationAttacker):
     @property
     def TAGS(self):
-        return { self.__lang_tag, Tag("get_pred", "victim"), Tag("get_prob", "victim") }
+        return {self.__lang_tag, Tag("get_pred", "victim"), Tag("get_prob", "victim")}
 
     def __init__(self,
-            import_score_threshold : float = -1,
-            sim_score_threshold : float = 0.5,
-            sim_score_window : int = 15,
-            tokenizer : Optional[Tokenizer] = None,
-            substitute : Optional[WordSubstitute] = None,
-            filter_words : List[str] = None,
-            token_unk = "<UNK>",
-            lang = None,
-        ):
+                 import_score_threshold: float = -1,
+                 sim_score_threshold: float = 0.5,
+                 sim_score_window: int = 15,
+                 tokenizer: Optional[Tokenizer] = None,
+                 substitute: Optional[WordSubstitute] = None,
+                 filter_words: List[str] = None,
+                 token_unk="<UNK>",
+                 lang=None,
+                 ):
         """
         Is BERT Really Robust? A Strong Baseline for Natural Language Attack on Text Classification and Entailment. Di Jin, Zhijing Jin, Joey Tianyi Zhou, Peter Szolovits. AAAI 2020.
         `[pdf] <https://arxiv.org/pdf/1907.11932v4>`__
@@ -38,12 +39,12 @@ class TextFoolerAttacker(ClassificationAttacker):
             substitute: A substitute that will be used during the attack procedure. Must be an instance of :py:class:`.WordSubstitute`
             lang: The language used in attacker. If is `None` then `attacker` will intelligently select the language based on other parameters.
             token_unk: The token id or the token name for out-of-vocabulary words in victim model. **Default:** ``"<UNK>"``
-            filter_words: A list of words that will be preserved in the attack procesudre.
+            filter_words: A list of words that will be preserved in the attack procesdure.
 
         :Classifier Capacity:
             * get_pred
             * get_prob
-        
+
         """
         lst = []
         if tokenizer is not None:
@@ -56,7 +57,7 @@ class TextFoolerAttacker(ClassificationAttacker):
             self.__lang_tag = language_by_name(lang)
             if self.__lang_tag is None:
                 raise ValueError("Unknown language `%s`" % lang)
-        
+
         if substitute is None:
             substitute = get_default_substitute(self.__lang_tag)
         self.substitute = substitute
@@ -65,7 +66,7 @@ class TextFoolerAttacker(ClassificationAttacker):
             tokenizer = get_default_tokenizer(self.__lang_tag)
         self.tokenizer = tokenizer
 
-        self.sim_predictor = UniversalSentenceEncoder()
+        self.sim_predictor = UniversalSentenceEncoder()  # 使用了专门的句子嵌入作为测量相似度的
 
         check_language([self.tokenizer, self.substitute, self.sim_predictor], self.__lang_tag)
 
@@ -79,7 +80,7 @@ class TextFoolerAttacker(ClassificationAttacker):
 
         self.token_unk = token_unk
 
-    def attack(self, victim: Classifier, sentence : str, goal: ClassifierGoal):
+    def attack(self, victim: Classifier, sentence: str, goal: ClassifierGoal):
         """
         * **clsf** : **Classifier** .
         * **x_orig** : Input sentence.
@@ -91,21 +92,23 @@ class TextFoolerAttacker(ClassificationAttacker):
         orig_prob = orig_probs.max()
 
         x_orig = self.tokenizer.tokenize(x_orig)
-        x_pos =  list(map(lambda x: x[1], x_orig))
+        x_pos = list(map(lambda x: x[1], x_orig))
         x_orig = list(map(lambda x: x[0], x_orig))
 
         len_text = len(x_orig)
-        if len_text < self.sim_score_window:
-            self.sim_score_threshold = 0.1  
+        if len_text < self.sim_score_window:  # 设个窗口，超过这个窗口就需要手动进行截断了
+            self.sim_score_threshold = 0.1
         half_sim_score_window = (self.sim_score_window - 1) // 2
 
-
-        leave_1_texts = [x_orig[:ii] + [self.token_unk] + x_orig[min(ii + 1, len_text):] for ii in range(len_text)]
+        leave_1_texts = [x_orig[:ii] + [self.token_unk] + x_orig[min(ii + 1, len_text):] for ii in
+                         range(len_text)]  # 将句子中的单词依次替换成[unk]
         leave_1_probs = victim.get_prob([self.tokenizer.detokenize(sentence) for sentence in leave_1_texts])
         leave_1_probs_argmax = np.argmax(leave_1_probs, axis=1)
 
-        import_scores = orig_prob - leave_1_probs[:, orig_label] + (leave_1_probs_argmax != orig_label).astype(np.float64) * (
-                    np.max(leave_1_probs, axis=1) - orig_probs[leave_1_probs_argmax])
+        import_scores = orig_prob - leave_1_probs[:, orig_label] + (leave_1_probs_argmax != orig_label).astype(
+            np.float64) * (
+                                np.max(leave_1_probs, axis=1) - orig_probs[
+                            leave_1_probs_argmax])  # 那个式子分为两个部分，首先是想让离正确的类别尽可能远，其次就是想让
 
         words_perturb = []
         for idx, score in sorted(enumerate(import_scores), key=lambda x: x[1], reverse=True):
@@ -120,10 +123,9 @@ class TextFoolerAttacker(ClassificationAttacker):
         ]
         synonyms_all = []
         for idx, word, pos in words_perturb:
-            synonyms = synonym_words.pop(0)
+            synonyms = synonym_words.pop(0)  # 从0号位置取，可以认为是从头得到
             if synonyms:
                 synonyms_all.append((idx, synonyms))
-
 
         text_prime = x_orig[:]
         text_cache = text_prime[:]
@@ -131,8 +133,7 @@ class TextFoolerAttacker(ClassificationAttacker):
             new_texts = [text_prime[:idx] + [synonym] + text_prime[idx + 1:] for synonym in synonyms]
             new_probs = victim.get_prob([self.tokenizer.detokenize(sentence) for sentence in new_texts])
 
-
-            if idx >= half_sim_score_window and len_text - idx - 1 >= half_sim_score_window:
+            if idx >= half_sim_score_window and len_text - idx - 1 >= half_sim_score_window:  # 以要替换的词为
                 text_range_min = idx - half_sim_score_window
                 text_range_max = idx + half_sim_score_window + 1
             elif idx < half_sim_score_window and len_text - idx - 1 >= half_sim_score_window:
@@ -146,13 +147,19 @@ class TextFoolerAttacker(ClassificationAttacker):
                 text_range_max = len_text
 
             texts = [self.tokenizer.detokenize(x[text_range_min:text_range_max]) for x in new_texts]
-            semantic_sims = np.array([self.sim_predictor.calc_score(self.tokenizer.detokenize(text_cache[text_range_min:text_range_max]), x) for x in texts])
+            semantic_sims = np.array(
+                [self.sim_predictor.calc_score(self.tokenizer.detokenize(text_cache[text_range_min:text_range_max]), x)
+                 for x in texts])  # ？貌似是贪心算法
             new_probs_mask = orig_label != np.argmax(new_probs, axis=1)
 
             new_probs_mask *= (semantic_sims >= self.sim_score_threshold)
 
-            synonyms_pos_ls = [list(map(lambda x: x[1], self.tokenizer.tokenize(self.tokenizer.detokenize(new_text[max(idx - 4, 0):idx + 5]))))[min(4, idx)]
-                               if len(new_text) > 10 else list(map(lambda x: x[1], self.tokenizer.tokenize(self.tokenizer.detokenize(new_text))))[idx] for new_text in new_texts]
+            synonyms_pos_ls = [list(map(lambda x: x[1], self.tokenizer.tokenize(
+                self.tokenizer.detokenize(new_text[max(idx - 4, 0):idx + 5]))))[
+                                   min(4, idx)]  # ?先解码再编码是为了干啥？答：x[1]指的是pos信息
+                               if len(new_text) > 10 else
+                               list(map(lambda x: x[1], self.tokenizer.tokenize(self.tokenizer.detokenize(new_text))))[
+                                   idx] for new_text in new_texts]
 
             pos_mask = np.array(self.pos_filter(x_pos[idx], synonyms_pos_ls))
             new_probs_mask *= pos_mask
@@ -161,18 +168,18 @@ class TextFoolerAttacker(ClassificationAttacker):
                 text_prime[idx] = synonyms[(new_probs_mask * semantic_sims).argmax()]
                 x_adv = self.tokenizer.detokenize(text_prime)
                 pred = victim.get_pred([x_adv])[0]
-                if goal.check(x_adv, pred):
+                if goal.check(x_adv, pred):  # 如果直接找到了目标词，使得预测的结果被干扰了，那么就直接返沪i这个词
                     return x_adv
             else:
-                new_label_probs = new_probs[:, orig_label] + (semantic_sims < self.sim_score_threshold).astype(np.float64) + (1 - pos_mask).astype(np.float64)
-                
-                new_label_prob_min = np.min(new_label_probs, axis=0)
+                new_label_probs = new_probs[:, orig_label] + (semantic_sims < self.sim_score_threshold).astype(
+                    np.float64) + (1 - pos_mask).astype(np.float64)
+                # 这个比较式可以看出，最想要语义相似度大而且是同类型的词，其次就是虽然语义相似度不大但是是同类型或者是语义相似度大但是是非同类型的，其他
+                new_label_prob_min = np.min(new_label_probs, axis=0)  # 取一个可能性最小的，但是这个可能性最小的
                 new_label_prob_argmin = np.argmin(new_label_probs, axis=0)
                 if new_label_prob_min < orig_prob:
                     text_prime[idx] = synonyms[new_label_prob_argmin]
             text_cache = text_prime[:]
         return None
-            
 
     def get_neighbours(self, word, pos):
         try:
@@ -188,8 +195,7 @@ class TextFoolerAttacker(ClassificationAttacker):
         except WordNotInDictionaryException:
             return []
 
-
     def pos_filter(self, ori_pos, new_pos_list):
-        same = [True if ori_pos == new_pos or (set([ori_pos, new_pos]) <= set(['noun', 'verb']))
+        same = [True if ori_pos == new_pos or (set([ori_pos, new_pos]) <= set(['noun', 'verb']))  # 集合比较大小其实就是在比较集合的包含关系。？这个地方不明白为什么是名词或动词都可以
                 else False for new_pos in new_pos_list]
         return same

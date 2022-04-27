@@ -10,8 +10,7 @@ import copy
 import random
 import numpy as np
 import torch
-from transformers import BertConfig, BertTokenizerFast, BertForMaskedLM
-
+from transformers import BertConfig, BertTokenizer, BertForMaskedLM
 
 
 class Feature(object):
@@ -25,31 +24,32 @@ class Feature(object):
         self.sim = 0.0
         self.changes = []
 
+
 class BAEAttacker(ClassificationAttacker):
     @property
     def TAGS(self):
-        return { self.__lang_tag, Tag("get_pred", "victim"), Tag("get_prob", "victim") }
+        return {self.__lang_tag, Tag("get_pred", "victim"), Tag("get_prob", "victim")}
 
-    def __init__(self, 
-            mlm_path : str = "bert-base-uncased", 
-            k : int = 50, 
-            threshold_pred_score : float = 0.3, 
-            max_length : int = 512, 
-            batch_size : int = 32, 
-            replace_rate : float = 1.0, 
-            insert_rate : float = 0.0, 
-            device : Optional[torch.device] = None, 
-            sentence_encoder = None, 
-            filter_words : List[str] = None
-        ):
+    def __init__(self,
+                 mlm_path: str = "bert-base-uncased",
+                 k: int = 50,
+                 threshold_pred_score: float = 0.3,
+                 max_length: int = 512,
+                 batch_size: int = 32,
+                 replace_rate: float = 1.0,
+                 insert_rate: float = 0.0,
+                 device: Optional[torch.device] = None,
+                 sentence_encoder=None,
+                 filter_words: List[str] = None
+                 ):
         """
-        BAE: BERT-based Adversarial Examples for Text Classification. Siddhant Garg, Goutham Ramakrishnan. EMNLP 2020. 
+        BAE: BERT-based Adversarial Examples for Text Classification. Siddhant Garg, Goutham Ramakrishnan. EMNLP 2020.
         `[pdf] <https://arxiv.org/abs/2004.01970>`__
         `[code] <https://github.com/QData/TextAttack/blob/master/textattack/attack_recipes/bae_garg_2019.py>`__
 
         This script is adapted from <https://github.com/LinyangLee/BERT-Attack> given the high similarity between the two attack methods.
-        
-        This attacker supports the 4 attack methods (BAE-R, BAE-I, BAE-R/I, BAE-R+I) in the paper. 
+
+        This attacker supports the 4 attack methods (BAE-R, BAE-I, BAE-R/I, BAE-R+I) in the paper.
 
         Args:
             mlm_path: The path to the masked language model. **Default:** 'bert-base-uncased'
@@ -77,7 +77,7 @@ class BAEAttacker(ClassificationAttacker):
         else:
             self.encoder = sentence_encoder
 
-        self.tokenizer_mlm = BertTokenizerFast.from_pretrained(mlm_path, do_lower_case=True)
+        self.tokenizer_mlm = BertTokenizer.from_pretrained(mlm_path, do_lower_case=True)
         if device is not None:
             self.device = device
         else:
@@ -93,16 +93,16 @@ class BAEAttacker(ClassificationAttacker):
         self.replace_rate = replace_rate
         self.insert_rate = insert_rate
         if self.replace_rate == 1.0 and self.insert_rate == 0.0:
-            self.sub_mode = 0 # only using replacement
+            self.sub_mode = 0  # only using replacement
         elif self.replace_rate == 0.0 and self.insert_rate == 1.0:
-            self.sub_mode = 1 # only using insertion
+            self.sub_mode = 1  # only using insertion
         elif self.replace_rate + self.insert_rate == 1.0:
-            self.sub_mode = 2 # replacement OR insertion for each token / subword
+            self.sub_mode = 2  # replacement OR insertion for each token / subword
         elif self.replace_rate == 1.0 and self.insert_rate == 1.0:
-            self.sub_mode = 3 # first replacement AND then insertion for each token / subword
+            self.sub_mode = 3  # first replacement AND then insertion for each token / subword
         else:
             raise NotImplementedError()
-        
+
         self.__lang_tag = TAG_English
         if filter_words is None:
             filter_words = get_default_filter_words(self.__lang_tag)
@@ -120,35 +120,36 @@ class BAEAttacker(ClassificationAttacker):
         words, sub_words, keys = self._tokenize(feature.seq, tokenizer)
         max_length = self.max_length
         # original label
-        inputs = tokenizer.encode_plus(feature.seq, None, add_special_tokens=True, max_length=max_length, truncation=True)
+        inputs = tokenizer.encode_plus(feature.seq, None, add_special_tokens=True, max_length=max_length,
+                                       truncation=True)
         input_ids, token_type_ids = torch.tensor(inputs["input_ids"]), torch.tensor(inputs["token_type_ids"])
         attention_mask = torch.tensor([1] * len(input_ids))
         seq_len = input_ids.size(0)
-        
+
         orig_probs = torch.Tensor(victim.get_prob([feature.seq]))
         orig_probs = orig_probs[0].squeeze()
         orig_probs = torch.softmax(orig_probs, -1)
-       
+
         current_prob = orig_probs.max()
 
         sub_words = ['[CLS]'] + sub_words[:max_length - 2] + ['[SEP]']
-       
+
         input_ids_ = torch.tensor([tokenizer.convert_tokens_to_ids(sub_words)])
-        word_predictions = self.mlm_model(input_ids_.to(self.device))[0].squeeze()  # seq-len(sub) vocab
+        word_predictions = self.mlm_model(input_ids_.to(self.device))[0].squeeze()  # seq-len(sub) vocab 这个返回的是每个词的近义词
         word_pred_scores_all, word_predictions = torch.topk(word_predictions, self.k, -1)  # seq-len k
 
         word_predictions = word_predictions[1:len(sub_words) + 1, :]
         word_pred_scores_all = word_pred_scores_all[1:len(sub_words) + 1, :]
 
         important_scores = self.get_important_scores(words, victim, current_prob, goal.target, orig_probs,
-                                                tokenizer, self.batch_size, max_length)
+                                                     tokenizer, self.batch_size, max_length)
         feature.query += int(len(words))
         list_of_index = sorted(enumerate(important_scores), key=lambda x: x[1], reverse=True)
-        final_words = copy.deepcopy(words)
+        final_words = copy.deepcopy(words)  # 原词的word数组
 
         offset = 0
         for top_index in list_of_index:
-            if feature.change > int(0.2 * (len(words))):
+            if feature.change > int(0.2 * (len(words))):  # 这里就是说，如果改动超过了20%的句子长度，那么就是超过了阈值，认为是肉眼可分的
                 feature.success = 1  # exceed
                 return None
 
@@ -163,20 +164,26 @@ class BAEAttacker(ClassificationAttacker):
             replace_sub_len, insert_sub_len = 0, 0
             temp_sub_mode = -1
             if self.sub_mode == 0:
-                substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'r', self.k, self.threshold_pred_score)
+                substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'r', self.k,
+                                                  self.threshold_pred_score)
             elif self.sub_mode == 1:
-                substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'i', self.k, self.threshold_pred_score)
+                substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'i', self.k,
+                                                  self.threshold_pred_score)
             elif self.sub_mode == 2:
                 rand_num = random.random()
                 if rand_num < self.replace_rate:
-                    substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'r', self.k, self.threshold_pred_score)
+                    substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'r',
+                                                      self.k, self.threshold_pred_score)
                     temp_sub_mode = 0
                 else:
-                    substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'i', self.k, self.threshold_pred_score)
+                    substitutes = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'i',
+                                                      self.k, self.threshold_pred_score)
                     temp_sub_mode = 1
             elif self.sub_mode == 3:
-                substitutes_replace = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'r', self.k / 2, self.threshold_pred_score) 
-                substitutes_insert = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'i', self.k - self.k / 2, self.threshold_pred_score) 
+                substitutes_replace = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'r',
+                                                          self.k / 2, self.threshold_pred_score)
+                substitutes_insert = self.get_substitues(top_index[0] + 1, sub_words, tokenizer, self.mlm_model, 'i',
+                                                         self.k - self.k / 2, self.threshold_pred_score)
                 replace_sub_len, insert_sub_len = len(substitutes_replace), len(substitutes_insert)
                 substitutes = substitutes_replace + substitutes_insert
             else:
@@ -184,12 +191,12 @@ class BAEAttacker(ClassificationAttacker):
 
             most_gap = 0.0
             candidate = None
-            
+
             for i, substitute in enumerate(substitutes):
                 if substitute == tgt_word:
-                    continue  # filter out original word
+                    continue  # filter out original word 如果是用的原来的词进行替换，那么将不替换
                 if '##' in substitute:
-                    continue  # filter out sub-word
+                    continue  # filter out sub-word 用子词如##ing替换，则不替换
                 if substitute in self.filter_words:
                     continue
 
@@ -199,10 +206,10 @@ class BAEAttacker(ClassificationAttacker):
                     else:
                         temp_sub_mode = 1
                 temp_replace = final_words
-                
-                # Check if we should REPLACE or INSERT the substitute into the orignal word list 
-                is_replace = self.sub_mode == 0 or temp_sub_mode == 0 
-                is_insert = self.sub_mode == 1 or temp_sub_mode == 1 
+
+                # Check if we should REPLACE or INSERT the substitute into the orignal word list
+                is_replace = self.sub_mode == 0 or temp_sub_mode == 0
+                is_insert = self.sub_mode == 1 or temp_sub_mode == 1
                 if is_replace:
                     orig_word = temp_replace[top_index[0]]
                     pos_tagger = DataManager.load("TProcess.NLTKPerceptronPosTagger")
@@ -217,23 +224,23 @@ class BAEAttacker(ClassificationAttacker):
                 elif is_insert:
                     temp_replace.insert(top_index[0] + offset, substitute)
                 else:
-                   raise NotImplementedError
-    
+                    raise NotImplementedError
+
                 temp_text = tokenizer.convert_tokens_to_string(temp_replace)
-                
-                
-                use_score = self.encoder.calc_score(temp_text, x_orig)
-                
+
+                use_score = self.encoder.calc_score(temp_text, x_orig)  # 和TextAttack一样，同样需要计算句子嵌入的相似度
+
                 # From TextAttack's implementation: Finally, since the BAE code is based on the TextFooler code, we need to
                 # adjust the threshold to account for the missing / pi in the cosine
                 # similarity comparison. So the final threshold is 1 - (1 - 0.8) / pi
                 # = 1 - (0.2 / pi) = 0.936338023.
                 if use_score < 0.936:
                     continue
-                inputs = tokenizer.encode_plus(temp_text, None, add_special_tokens=True, max_length=max_length, truncation=True)
+                inputs = tokenizer.encode_plus(temp_text, None, add_special_tokens=True, max_length=max_length,
+                                               truncation=True)
                 input_ids = torch.tensor(inputs["input_ids"]).unsqueeze(0).to(self.device)
                 seq_len = input_ids.size(1)
-                
+
                 temp_prob = torch.Tensor(victim.get_prob([temp_text]))[0].squeeze()
                 feature.query += 1
                 temp_prob = torch.softmax(temp_prob, -1)
@@ -258,20 +265,20 @@ class BAEAttacker(ClassificationAttacker):
                         most_gap = gap
                         candidate = substitute
                 if is_insert:
-                    final_words.pop(top_index[0] + offset)
+                    final_words.pop(top_index[0] + offset)  # 相当于回滚
 
             if most_gap > 0:
                 feature.change += 1
                 feature.changes.append([keys[top_index[0]][0], candidate, tgt_word])
                 current_prob = current_prob - most_gap
-                if is_replace:
+                if is_replace:  # 这个地方为什么上面是可以一块
                     final_words[top_index[0]] = candidate
                 elif is_insert:
-                    final_words.insert(top_index[0] + offset, candidate) 
+                    final_words.insert(top_index[0] + offset, candidate)
                     offset += 1
                 else:
                     raise NotImplementedError()
-            
+
         feature.final_adverse = (tokenizer.convert_tokens_to_string(final_words))
         feature.success = 2
         return None
@@ -291,15 +298,24 @@ class BAEAttacker(ClassificationAttacker):
 
         return words, sub_words, keys
 
+    def _get_masked(self, words):
+        len_text = len(words)
+        masked_words = []
+        for i in range(len_text - 1):
+            masked_words.append(words[0:i] + ['[UNK]'] + words[i + 1:])
+        # list of words
+        return masked_words
+
     def _get_masked_insert(self, words):
-        len_text = max(len(words), 2)
+        len_text = len(words)
         masked_words = []
         for i in range(len_text - 1):
             masked_words.append(words[0:i + 1] + ['[UNK]'] + words[i + 1:])
         # list of words
         return masked_words
-    
-    def get_important_scores(self, words, tgt_model, orig_prob, orig_label, orig_probs, tokenizer, batch_size, max_length):
+
+    def get_important_scores(self, words, tgt_model, orig_prob, orig_label, orig_probs, tokenizer, batch_size,
+                             max_length):
         masked_words = self._get_masked_insert(words)
         texts = [' '.join(words) for words in masked_words]  # list of text of masked words
         leave_1_probs = torch.Tensor(tgt_model.get_prob(texts))
@@ -307,11 +323,11 @@ class BAEAttacker(ClassificationAttacker):
         leave_1_probs_argmax = torch.argmax(leave_1_probs, dim=-1)
 
         import_scores = (orig_prob
-                        - leave_1_probs[:, orig_label]
-                        +
-                        (leave_1_probs_argmax != orig_label).float()
-                        * (leave_1_probs.max(dim=-1)[0] - torch.index_select(orig_probs, 0, leave_1_probs_argmax))
-                        ).data.cpu().numpy()
+                         - leave_1_probs[:, orig_label]
+                         +
+                         (leave_1_probs_argmax != orig_label).float()
+                         * (leave_1_probs.max(dim=-1)[0] - torch.index_select(orig_probs, 0, leave_1_probs_argmax))
+                         ).data.cpu().numpy()  # 同样是要离正确的远，离错误的更近
 
         return import_scores
 
@@ -321,12 +337,12 @@ class BAEAttacker(ClassificationAttacker):
 
         if sub_mode == "r":
             masked_tokens[masked_index] = '[MASK]'
-            
+
         elif sub_mode == "i":
             masked_tokens.insert(masked_index, '[MASK]')
         else:
             raise NotImplementedError()
-        
+
         # Convert token to vocabulary indices
         indexed_tokens = tokenizer.convert_tokens_to_ids(masked_tokens)
         # Define sentence A and B indices associated to 1st and 2nd sentences (see paper)
@@ -335,7 +351,7 @@ class BAEAttacker(ClassificationAttacker):
         # Convert inputs to PyTorch tensors
         tokens_tensor = torch.tensor([indexed_tokens]).to(self.device)
         segments_tensors = torch.tensor([segments_ids]).to(self.device)
-      
+
         model.eval()
 
         # Predict all tokens
@@ -346,7 +362,7 @@ class BAEAttacker(ClassificationAttacker):
         predicted_indices = torch.topk(predictions[0, masked_index], self.k)[1]
         predicted_tokens = tokenizer.convert_ids_to_tokens(predicted_indices)
         return predicted_tokens
-    
+
     def get_sim_embed(self, embed_path, sim_path):
         id2word = {}
         word2id = {}

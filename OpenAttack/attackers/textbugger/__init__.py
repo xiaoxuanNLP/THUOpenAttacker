@@ -15,20 +15,20 @@ class TextBuggerAttacker(ClassificationAttacker):
 
     @property
     def TAGS(self):
-        ret = { self.__lang_tag, Tag("get_pred", "victim") }
+        ret = {self.__lang_tag, Tag("get_pred", "victim")}
         if self.blackbox:
-            ret.add(Tag("get_prob", "victim"))
+            ret.add(Tag("get_prob", "victim"))  # 得到重要性
         else:
-            ret.add(Tag("get_grad", "victim"))
+            ret.add(Tag("get_grad", "victim"))  # 得到梯度
         return ret
 
     def __init__(self,
-            blackbox = True,
-            tokenizer : Optional[Tokenizer] = None,
-            substitute : Optional[WordSubstitute] = None,
-            filter_words : List[str] = None,
-            lang = None
-        ):
+                 blackbox=True,
+                 tokenizer: Optional[Tokenizer] = None,
+                 substitute: Optional[WordSubstitute] = None,
+                 filter_words: List[str] = None,
+                 lang=None
+                 ):
         """
         TEXTBUGGER: Generating Adversarial Text Against Real-world Applications. Jinfeng Li, Shouling Ji, Tianyu Du, Bo Li, Ting Wang. NDSS 2019.
         `[pdf] <https://arxiv.org/pdf/1812.05271.pdf>`__
@@ -45,7 +45,7 @@ class TextBuggerAttacker(ClassificationAttacker):
             * get_prob `if blackbox = True`
             * get_grad `if blackbox = False`
 
-        
+
         """
 
         lst = []
@@ -59,7 +59,7 @@ class TextBuggerAttacker(ClassificationAttacker):
             self.__lang_tag = language_by_name(lang)
             if self.__lang_tag is None:
                 raise ValueError("Unknown language `%s`" % lang)
-        
+
         if substitute is None:
             substitute = get_default_substitute(self.__lang_tag)
         self.substitute = substitute
@@ -86,7 +86,7 @@ class TextBuggerAttacker(ClassificationAttacker):
             ranked_words = self.get_w_word_importances(x, victim, goal)
         for word_idx in ranked_words:
             word = x[word_idx]
-            if word.lower() in self.filter_words:
+            if word in self.filter_words:
                 continue
             bug = self.selectBug(word, word_idx, x, victim, goal)
             x = self.replaceWithBug(x, word_idx, bug)
@@ -98,19 +98,17 @@ class TextBuggerAttacker(ClassificationAttacker):
 
         return None
 
-    def get_word_importances(self, sentence_tokens, clsf, goal: ClassifierGoal):
+    def get_word_importances(self, sentence_tokens, clsf, goal: ClassifierGoal):  # clsf是victim模型
         word_losses = {}
         for i in range(len(sentence_tokens)):
-            sentence_tokens_without =  sentence_tokens[:i] + sentence_tokens[i + 1:]
+            sentence_tokens_without = sentence_tokens[:i] + sentence_tokens[i + 1:]  # 可以看出，这个地方就是直接把对应位置的单词摘出来，然后组成一个句子
             sentence_without = self.tokenizer.detokenize(sentence_tokens_without)
             tempoutput = clsf.get_prob([sentence_without])[0]
             word_losses[i] = tempoutput[goal.target]
         word_losses = [k for k, _ in sorted(word_losses.items(), key=lambda item: item[1], reverse=goal.targeted)]
         return word_losses
 
-    def get_w_word_importances(self, sentence_tokens, clsf, goal : ClassifierGoal):  # white
-        # get y_predict
-        y_orig = goal.target
+    def get_w_word_importances(self, sentence_tokens, clsf, y_orig):  # white
         _, grad = clsf.get_grad([sentence_tokens], [y_orig])
         grad = grad[0]
         if grad.shape[0] != len(sentence_tokens):
@@ -125,13 +123,13 @@ class TextBuggerAttacker(ClassificationAttacker):
         best_bug = original_word
         for bug_type, b_k in bugs.items():
             candidate_k = self.replaceWithBug(x_prime, word_idx, b_k)
-            score_k = self.getScore(candidate_k, clsf, goal)
+            score_k = self.getScore(candidate_k, clsf, goal)  # 获得干扰预测的分数
             if score_k > max_score:
                 best_bug = b_k
                 max_score = score_k
         return best_bug
 
-    def getScore(self, candidate, clsf, goal):
+    def getScore(self, candidate, clsf, goal):  # 这个地方就是，如果是有目标的，那就离目标尽可能近，否则就离正确值尽可能远即可
         candidate_sentence = self.tokenizer.detokenize(candidate)
         tempoutput = clsf.get_prob([candidate_sentence])[0]
         if goal.targeted:
@@ -142,15 +140,15 @@ class TextBuggerAttacker(ClassificationAttacker):
     def replaceWithBug(self, x_prime, word_idx, bug):
         return x_prime[:word_idx] + [bug] + x_prime[word_idx + 1:]
 
-    def generateBugs(self, word, glove_vectors, sub_w_enabled=False, typo_enabled=False):
+    def generateBugs(self, word, glove_vectors, sub_w_enabled=False, typo_enabled=False):  # 这个函数是生成干扰策略的决策器
         bugs = {"insert": word, "delete": word, "swap": word, "sub_C": word, "sub_W": word}
-        if len(word) <= 2:
+        if len(word) <= 2:  # 如果整个句子（包含标点）小于2，那不操作
             return bugs
-        bugs["insert"] = self.bug_insert(word)
-        bugs["delete"] = self.bug_delete(word)
-        bugs["swap"] = self.bug_swap(word)
-        bugs["sub_C"] = self.bug_sub_C(word)
-        bugs["sub_W"] = self.bug_sub_W(word)
+        bugs["insert"] = self.bug_insert(word)  # 当单词小于等于6的时候不插，否则在单词之间随便找个位置，插入歌空格
+        bugs["delete"] = self.bug_delete(word)  # 随便删一个
+        bugs["swap"] = self.bug_swap(word)  # 小于4的句子不换
+        bugs["sub_C"] = self.bug_sub_C(word)  # 字母的键盘临近替换和形似替换
+        bugs["sub_W"] = self.bug_sub_W(word)  # 找意思最相近的词
         return bugs
 
     def bug_sub_W(self, word):
@@ -215,8 +213,8 @@ class TextBuggerAttacker(ClassificationAttacker):
             "a": "qwszx", "s": "qweadzx", "d": "wersfxc", "f": "ertdgcv", "g": "rtyfhvb", "h": "tyugjbn",
             "j": "yuihknm", "k": "uiojlm", "l": "opk",
             "z": "asx", "x": "sdzc", "c": "dfxv", "v": "fgcb", "b": "ghvn", "n": "hjbm", "m": "jkn"
-        }
-        # By visual proximity
+        }  # 键盘上的位置
+        # By visual proximity # 形似
         neighbors['i'] += '1'
         neighbors['l'] += '1'
         neighbors['z'] += '2'
