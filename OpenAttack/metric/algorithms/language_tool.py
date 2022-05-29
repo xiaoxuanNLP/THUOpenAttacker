@@ -1,11 +1,10 @@
 from .base import AttackMetric
 from ...tags import *
 
+
 class LanguageTool(AttackMetric):
-    
-    
     NAME = "Grammatical Errors"
-    TAGS = { TAG_English }
+    TAGS = {TAG_English}
 
     def __init__(self) -> None:
         """
@@ -18,15 +17,15 @@ class LanguageTool(AttackMetric):
         """
         import language_tool_python
         self.language_tool = language_tool_python.LanguageTool('en-US')
-    
+
     def after_attack(self, input, adversarial_sample):
         if adversarial_sample is not None:
             return len(self.language_tool.check(adversarial_sample))
 
+
 class LanguageToolChinese(AttackMetric):
-    
     NAME = "Grammatical Errors"
-    TAGS = { TAG_Chinese }
+    TAGS = {TAG_Chinese}
 
     def __init__(self) -> None:
         """
@@ -39,8 +38,11 @@ class LanguageToolChinese(AttackMetric):
         """
         import language_tool_python
         self.language_tool = language_tool_python.LanguageTool('zh-CN')
-    
+
     def after_attack(self, input, adversarial_sample):
         if adversarial_sample is not None:
             return len(self.language_tool.check(adversarial_sample))
-    
+
+if __name__ == "__main__":
+    import language_tool_python
+    tool = language_tool_python.LanguageTool('en-US')

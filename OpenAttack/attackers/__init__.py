@@ -18,3 +18,5 @@ from .pso import PSOAttacker
 from .bert_attack import BERTAttacker
 from .bae import BAEAttacker
 from .geometry import GEOAttacker
+from .vat import VATAttacker
+from .gbda import GBDAAttacker

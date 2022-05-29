@@ -14,3 +14,5 @@ class ClassifierGoal(AttackGoal):
             return prediction == self.target
         else:
             return prediction != self.target
+    def get_label(self):
+        return self.target

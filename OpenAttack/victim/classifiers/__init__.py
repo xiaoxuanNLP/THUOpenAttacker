@@ -1,2 +1,2 @@
 from .base import Classifier
-from .transformers import TransformersClassifier
+from .transformers import TransformersClassifier,TransformersLearnable
