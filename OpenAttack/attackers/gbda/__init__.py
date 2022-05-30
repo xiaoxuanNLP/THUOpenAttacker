@@ -21,7 +21,6 @@ class GBDAAttacker(ClassificationAttacker):
 
     def __init__(self,
                  ref_model,
-                 idf_dict,
                  tokenizer: Optional[Tokenizer] = None,
                  lang=None,
                  num_labels=2):
