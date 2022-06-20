@@ -61,10 +61,6 @@ class GAAttacker(ClassificationAttacker):
 
         self.token_unk = token_unk
 
-        synonym_words = [
-            self.get_neighbours(word,pos) # TODO
-            # for idx,word,pos in x_orig
-        ]
 
     def attack(self, victim: Classifier, sentence: str, goal: ClassifierGoal):
         """
@@ -80,6 +76,14 @@ class GAAttacker(ClassificationAttacker):
         x_orig = list(map(lambda x: x[0], x_orig))
 
         len_text = len(x_orig)
+
+        words_perturb = [(x_orig[i],x_pos[i]) for i in range(len_text)]
+
+        synonym_words = [
+            self.get_neighbours(word, pos)  # TODO
+            for word,pos in words_perturb
+        ]
+        print("synonym_words = ",synonym_words)
 
     def get_neighbours(self, word, pos):
         try:

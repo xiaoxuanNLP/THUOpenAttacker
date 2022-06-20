@@ -20,3 +20,4 @@ from .bae import BAEAttacker
 from .geometry import GEOAttacker
 from .vat import VATAttacker
 from .gbda import GBDAAttacker
+from .ga import GAAttacker
