@@ -5,7 +5,7 @@ from tqdm import tqdm
 from ..utils import visualizer, result_visualizer, get_language, language_by_name
 from .utils import worker_process, worker_init, attack_process
 from ..tags import *
-from ..text_process.tokenizer import Tokenizer, get_default_tokenizer
+from ..text_process.tokenizer import Tokenizer, get_default_tokenizer, get_bert_tokenizer
 from ..victim.base import Victim
 from ..attackers.base import Attacker
 from ..metric import AttackMetric, MetricSelector
