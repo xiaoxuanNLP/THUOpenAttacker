@@ -31,5 +31,7 @@ def main():
 if __name__ == "__main__":
     # sent_tokenizer = DataManager.load("TProcess.NLTKSentTokenizer")
     main()
-    from transformers import BertTokenizer
-    # x = "you are"
+    # import numpy as np
+    # scores = [1,2]
+    # parent2 = np.random.choice(scores, size=4, p=[0.4,0.6])
+    # print("parent2 = ",parent2)
