@@ -27,8 +27,8 @@ class UniversalSentenceEncoder(AttackMetric):
         
         import tensorflow_hub as hub
         
-        self.embed = hub.load( DataManager.load("AttackAssist.UniversalSentenceEncoder") )
-
+        # self.embed = hub.load( DataManager.load("AttackAssist.UniversalSentenceEncoder") )
+        self.embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
     def calc_score(self, sentA : str, sentB : str) -> float:
         """
         Args:

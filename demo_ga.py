@@ -22,7 +22,7 @@ def main():
     dataset = datasets.load_dataset("sst", split="train[:100]").map(function=dataset_mapping)
 
     print("Start attack")
-    tokenizer = get_bert_tokenizer(TAG_English)
+    # tokenizer = get_bert_tokenizer(TAG_English)
     # attack_eval = OpenAttack.AttackEval(attacker, clsf,tokenizer=tokenizer)
     attack_eval = OpenAttack.AttackEval(attacker, clsf)
 
