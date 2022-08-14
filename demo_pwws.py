@@ -1,5 +1,5 @@
 import OpenAttack
-import datasets
+import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import numpy as np
 import datasets
@@ -14,18 +14,20 @@ def dataset_mapping(x):
 
 def main():
     print("New Attacker")
-    attacker = OpenAttack.attackers.PWWSAttacker(lang="english")
+    attacker = OpenAttack.attackers.PWWSAttacker()
 
     print("Building model")
     clsf = OpenAttack.loadVictim("BERT.SST")
 
     print("Loading dataset")
-    dataset = datasets.load_dataset("sst").map(function=dataset_mapping)
+    dataset = datasets.load_dataset("sst", split="train[:2000]").map(function=dataset_mapping)
+    # print("dataset = ",dataset)
 
     print("start attack")
-    attacker_eval = OpenAttack.AttackEval(attacker,clsf,metrics=[
+    attacker_eval = OpenAttack.AttackEval(attacker,clsf, metrics=[
         OpenAttack.metric.Fluency(),
         OpenAttack.metric.GrammaticalErrors(),
+        OpenAttack.metric.SemanticSimilarity(),
         OpenAttack.metric.EditDistance(),
         OpenAttack.metric.ModificationRate()
     ])

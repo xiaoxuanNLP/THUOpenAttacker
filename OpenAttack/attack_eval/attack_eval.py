@@ -177,6 +177,7 @@ class AttackEval:
 
         # Begin for
         for i, res in enumerate(result_iterator):
+            # print("res = ",res)
             total_inst += 1
             success_inst += int(res["success"])
 
